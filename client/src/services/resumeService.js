@@ -1,6 +1,6 @@
 /**
  * @file resumeService.js
- * @description Frontend API client service for Candidate Resume operations.
+ * @description Frontend API client service for Candidate Resume operations and AI feedback.
  */
 
 import api from './api';
@@ -43,6 +43,15 @@ export const resumeService = {
    */
   delete: async (id) => {
     const response = await api.delete(`/resumes/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Request AI ATS feedback for resume
+   * Invokes POST /api/ai/resume-feedback per team API contract
+   */
+  getAiFeedback: async (payload) => {
+    const response = await api.post('/ai/resume-feedback', payload);
     return response.data;
   }
 };

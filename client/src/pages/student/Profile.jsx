@@ -37,6 +37,8 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { useAuth } from '../../hooks/useAuth';
 import studentService from '../../services/studentService';
 
+import { ErrorBoundary } from '../../components/common/ErrorBoundary';
+
 const SUGGESTED_SKILLS = [
   'JavaScript',
   'React',
@@ -54,7 +56,7 @@ const SUGGESTED_SKILLS = [
   'Redux'
 ];
 
-export const Profile = () => {
+const ProfileContent = () => {
   const { user } = useAuth();
 
   // State
@@ -898,6 +900,14 @@ export const Profile = () => {
         </div>
       </form>
     </div>
+  );
+};
+
+export const Profile = () => {
+  return (
+    <ErrorBoundary>
+      <ProfileContent />
+    </ErrorBoundary>
   );
 };
 

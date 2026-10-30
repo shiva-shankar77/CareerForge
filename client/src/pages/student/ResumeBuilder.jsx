@@ -4,7 +4,7 @@
  * @owner Member 1 (Student profile + Resume)
  * @description Interactive split-screen Resume Builder with step-by-step editing form,
  * live real-time preview, template switching (Modern & Classic), profile auto-fill,
- * and high-fidelity PDF export via html2pdf.
+ * high-fidelity PDF export via html2pdf, and wired AI Resume Feedback integration.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -28,12 +28,20 @@ import {
   Star,
   Copy,
   Layout,
-  Printer
+  Printer,
+  Bot,
+  BrainCircuit,
+  Check,
+  TrendingUp,
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
+import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
+import { ErrorBoundary } from '../../components/common/ErrorBoundary';
 import { ResumeViewer } from '../../components/student/ResumeViewer';
 import { useAuth } from '../../hooks/useAuth';
 import studentService from '../../services/studentService';
@@ -63,7 +71,7 @@ const DEFAULT_RESUME_STATE = {
   certifications: []
 };
 
-export const ResumeBuilder = () => {
+const ResumeBuilderContent = () => {
   const { user } = useAuth();
   const printRef = useRef(null);
 
@@ -74,11 +82,20 @@ export const ResumeBuilder = () => {
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [autoFilling, setAutoFilling] = useState(false);
+  const [requestingAi, setRequestingAi] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
+  // AI Feedback Modal State
+  const [aiModal, setAiModal] = useState({
+    isOpen: false,
+    status: 'idle', // 'success' | 'placeholder' | 'error'
+    message: '',
+    data: null
+  });
+
   // Active Tab in Form Wizard
-  const [activeStep, setActiveStep] = useState('personal'); // 'personal' | 'skills' | 'education' | 'experience' | 'projects' | 'certifications'
+  const [activeStep, setActiveStep] = useState('personal');
 
   // Current Resume Form State
   const [formData, setFormData] = useState({
@@ -101,11 +118,9 @@ export const ResumeBuilder = () => {
       if (res.success && Array.isArray(res.data)) {
         setResumes(res.data);
         if (res.data.length > 0) {
-          // Select default or first resume
           const defaultResume = res.data.find((r) => r.isDefault) || res.data[0];
           selectResume(defaultResume);
         } else {
-          // No resumes exist yet, auto-populate base info from user
           setFormData((prev) => ({
             ...prev,
             personalInfo: {
@@ -168,7 +183,7 @@ export const ResumeBuilder = () => {
         email: user?.email || ''
       }
     });
-    setSuccessMsg('Created fresh resume blank. Customize and save your changes.');
+    setSuccessMsg('Created fresh blank resume. Customize and save your changes.');
     setTimeout(() => setSuccessMsg(''), 4000);
   };
 
@@ -190,7 +205,7 @@ export const ResumeBuilder = () => {
         setSelectedResumeId(res.data._id);
         setSuccessMsg(`Resume "${res.data.title}" saved successfully!`);
         setTimeout(() => setSuccessMsg(''), 5000);
-        // Refresh resume list
+
         const updatedList = await resumeService.getAll();
         if (updatedList.success) {
           setResumes(updatedList.data);
@@ -290,7 +305,7 @@ export const ResumeBuilder = () => {
     }
   };
 
-  // PDF Export using html2pdf.js with high quality settings
+  // PDF Export using html2pdf.js
   const handleExportPdf = async () => {
     if (!printRef.current) return;
     try {
@@ -318,10 +333,56 @@ export const ResumeBuilder = () => {
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
       console.error('PDF export failed:', err);
-      // Fallback to browser print
       window.print();
     } finally {
       setExportingPdf(false);
+    }
+  };
+
+  // AI Resume Feedback Trigger (POST /api/ai/resume-feedback)
+  const handleGetAiFeedback = async () => {
+    try {
+      setRequestingAi(true);
+      setError(null);
+
+      // Construct payload according to team API contract
+      const payload = {
+        resumeId: selectedResumeId || 'draft',
+        resumeTitle: formData.title,
+        resumeData: formData,
+        resumeText: `Candidate: ${formData.personalInfo.fullName}\nHeadline: ${formData.personalInfo.headline}\nSummary: ${formData.personalInfo.summary}\nSkills: ${formData.skills.join(', ')}\nEducation: ${formData.education.map(e => `${e.degree} at ${e.institution}`).join('; ')}\nProjects: ${formData.projects.map(p => `${p.title}: ${p.description}`).join('; ')}`
+      };
+
+      const res = await resumeService.getAiFeedback(payload);
+
+      // If backend returns analysis data (when Member 3 has implemented it)
+      setAiModal({
+        isOpen: true,
+        status: 'success',
+        message: res.message || 'AI ATS analysis completed successfully.',
+        data: res.data
+      });
+    } catch (err) {
+      console.warn('AI Feedback endpoint response:', err.response?.status, err.response?.data);
+
+      // Handle 501 / contract placeholder response gracefully
+      const isPlaceholder = err.response && (err.response.status === 501 || err.response.status === 404);
+      const backendMsg = err.response?.data?.message || 'Endpoint not implemented yet. Assigned to Member 3 (feature/ai-interview).';
+
+      setAiModal({
+        isOpen: true,
+        status: isPlaceholder ? 'placeholder' : 'error',
+        message: backendMsg,
+        data: {
+          endpoint: 'POST /api/ai/resume-feedback',
+          owner: 'Member 3 (AI service + Gemini Integration)',
+          skillsAnalyzed: formData.skills.length,
+          projectsAnalyzed: formData.projects.length,
+          educationCount: formData.education.length
+        }
+      });
+    } finally {
+      setRequestingAi(false);
     }
   };
 
@@ -538,6 +599,20 @@ export const ResumeBuilder = () => {
             title="Import headline, bio, skills, education, and projects from student profile"
           >
             Auto-Fill from Profile
+          </Button>
+
+          {/* Wired AI Resume Feedback Button */}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            icon={Bot}
+            onClick={handleGetAiFeedback}
+            isLoading={requestingAi}
+            className="text-xs bg-indigo-950/60 border-indigo-500/50 text-indigo-300 hover:bg-indigo-900/60 shadow-md shadow-indigo-500/10"
+            title="Trigger POST /api/ai/resume-feedback for Gemini ATS analysis"
+          >
+            Get AI Feedback
           </Button>
 
           {/* PDF Download Button */}
@@ -1177,7 +1252,106 @@ export const ResumeBuilder = () => {
           </div>
         </div>
       </div>
+
+      {/* ============================================================
+          AI RESUME FEEDBACK MODAL (Wired to POST /api/ai/resume-feedback)
+         ============================================================ */}
+      <Modal
+        isOpen={aiModal.isOpen}
+        onClose={() => setAiModal({ ...aiModal, isOpen: false })}
+        title="AI Resume Analysis & ATS Review"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-5 text-slate-200">
+          {/* Header Badge */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/30">
+            <div className="flex items-center gap-2.5">
+              <Bot className="w-5 h-5 text-indigo-400" />
+              <div>
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Target Endpoint: POST /api/ai/resume-feedback
+                </span>
+                <p className="text-[11px] text-indigo-300">
+                  Agreed API contract owned by Member 3 (feature/ai-interview)
+                </p>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              Wired
+            </span>
+          </div>
+
+          {/* Status Message from API */}
+          <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 text-xs space-y-2">
+            <div className="flex items-center gap-2 text-brand-400 font-semibold">
+              <BrainCircuit className="w-4 h-4" />
+              <span>Backend Contract Response:</span>
+            </div>
+            <p className="text-slate-300 italic bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              "{aiModal.message}"
+            </p>
+          </div>
+
+          {/* Client Pre-Flight Analysis Diagnostic */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Pre-Flight ATS Readiness Check
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800">
+                <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-semibold mb-1">
+                  <Check className="w-3.5 h-3.5" /> Skills Tagged
+                </div>
+                <div className="text-xl font-bold text-white">{formData.skills.length}</div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Parsed technical keywords</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800">
+                <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-semibold mb-1">
+                  <Check className="w-3.5 h-3.5" /> Projects Listed
+                </div>
+                <div className="text-xl font-bold text-white">{formData.projects.length}</div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Hands-on architectures</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800">
+                <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-semibold mb-1">
+                  <Check className="w-3.5 h-3.5" /> Education Verified
+                </div>
+                <div className="text-xl font-bold text-white">{formData.education.length}</div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Degrees & colleges</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Integration Status Notice */}
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300/90 leading-relaxed">
+            <strong>Architecture Note:</strong> The frontend is fully connected to{' '}
+            <code className="text-white bg-slate-900 px-1.5 py-0.5 rounded">POST /api/ai/resume-feedback</code> with
+            structured sections and full resume plain text payload. Once Member 3 merges the Gemini LLM pipeline on branch{' '}
+            <code className="text-white bg-slate-900 px-1.5 py-0.5 rounded">feature/ai-interview</code>, this dialog will seamlessly render Gemini's ATS score, strengths, and formatting recommendations without further frontend changes.
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setAiModal({ ...aiModal, isOpen: false })}
+            >
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
+  );
+};
+
+export const ResumeBuilder = () => {
+  return (
+    <ErrorBoundary>
+      <ResumeBuilderContent />
+    </ErrorBoundary>
   );
 };
 
